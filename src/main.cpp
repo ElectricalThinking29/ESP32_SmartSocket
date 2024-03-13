@@ -5,11 +5,21 @@
 #include <NTPClient.h>
 
 // SSID & Password
-const char *ssid = "Gi cung duoc";
-const char *password = "mKWiF1@#";
+const char *ssid = "****";
+const char *password = "++++";
 
+// Set your Static IP address
+IPAddress local_IP(192, 168, 1, 184);
+// Set your Gateway IP address
+IPAddress gateway(192, 168, 1, 1);
+IPAddress subnet(255, 255, 0, 0);
+IPAddress primaryDNS(8, 8, 8, 8);   //optional
+IPAddress secondaryDNS(8, 8, 4, 4); //optional
+
+// WebServer at port 80
 WebServer server(80);
 
+// Relay control pin (GPIO14 - D14)
 const int controlPin = 14; // GPIO14 (D14)
 
 String datetime = "YYYY-MM-DDTHH:MM";
@@ -66,8 +76,8 @@ String HTML = R"rawliteral(
 
 <h2>Timer History</h2>
 <table style="width:100%" border="1" cellspacing="0" cellpadding="3">
-<tr> <th>Datetime</th> <th>Timezone</th> <th>Action</th> <th>Set</th> <th></th> </tr>
-<tr> <td>DATETIME</td> <td>TIMEZONE</td> <td>ACTION</td> <td>SET?</td> <td></td> </tr> 
+<tr> <th>Datetime</th> <th>Timezone</th> <th>Action</th> <th>Set</th> </tr>
+<tr> <td>DATETIME</td> <td>TIMEZONE</td> <td>ACTION</td> <td>SET?</td> </tr> 
 </table>
 
 </body>
@@ -75,13 +85,20 @@ String HTML = R"rawliteral(
 
 )rawliteral";
 
-// Xử lý url gốc (/)
+/*Function declaration*/
+void handle_root();
+void relayOn();
+void relayOff();
+void setDateTime();
+int getSlectedTimezone();
+//unsigned long convertToEpoch(String datetime, int timezoneOffset);
+
+void checkDateTime();
+void cancelDateTime();
+
+// URI Root handle (/)
 void handle_root()
 {
-  Serial.print("Datetime: " + datetime);
-  Serial.print(", Timezone: " + timezone);
-  Serial.println(", Action: " + action);
-
   server.send(200, "text/html", HTML);
 }
 
@@ -108,7 +125,7 @@ void relayOff()
 // Set relay on/off time
 void setDateTime()
 {
-  // Get datetime from url
+  // Get datetime from uri
   datetime = server.arg("datetime");
   timezone = server.arg("timezone");
   action = server.arg("action");
@@ -119,16 +136,16 @@ void setDateTime()
 
   HTML.replace("NOT SCHEDULED", "SCHEDULED");
 
-  String newRow = "<tr> <td>" + datetime + "</td> <td>" + timezone + "</td> <td>" + action + "</td> <td>" + "SET" + "</td> </tr>" + "<tr> <td>DATETIME</td> <td>TIMEZONE</td> <td>ACTION</td> <td>SET?</td> <td></td> </tr> ";
+  String newRow = "<tr> <td>" + datetime + "</td> <td>" + timezone + "</td> <td>" + action + "</td> <td>" + "SET" + "</td> </tr>" + "<tr> <td>DATETIME</td> <td>TIMEZONE</td> <td>ACTION</td> <td>SET?</td> </tr> ";
 
-  HTML.replace("<tr> <td>DATETIME</td> <td>TIMEZONE</td> <td>ACTION</td> <td>SET?</td> <td></td> </tr> ", newRow);
+  HTML.replace("<tr> <td>DATETIME</td> <td>TIMEZONE</td> <td>ACTION</td> <td>SET?</td> </tr> ", newRow);
 
   server.send(200, "text/html", HTML);
 
   TimerSet = true;
 }
 
-
+// Convert timezone to offset seconds
 int getSlectedTimezone(String &timezone)
 {
   if (timezone == "UTC")
@@ -201,10 +218,20 @@ void checkDateTime()
     if (action == "on")
     {
       relayOn();
+      TimerSet = false;
+      cancelDateTime();
+      // Reload page
+      server.sendHeader("Location", "/");
+      server.send(303);
     }
     else if (action == "off")
     {
       relayOff();
+      TimerSet = false;
+      cancelDateTime();
+      // Reload page
+      server.sendHeader("Location", "/");
+      server.send(303);
     }
   }
   delay(1000);
@@ -218,20 +245,29 @@ void cancelDateTime()
   action = "on";
 
   HTML.replace("SCHEDULED", "NOT SCHEDULED");
-  HTML.replace("<tr> <td>DATETIME</td> <td>TIMEZONE</td> <td>ACTION</td> <td>SET?</td> <td></td> </tr> ", "<tr> <td> Delete timer </td> <td>"+ timezone +"</td> <td>" + action + "</td> <td>" + "RESET" + "<tr> <td>DATETIME</td> <td>TIMEZONE</td> <td>ACTION</td> <td>SET?</td> <td></td> </tr> ");
+  HTML.replace("<tr> <td>DATETIME</td> <td>TIMEZONE</td> <td>ACTION</td> <td>SET?</td> </tr> ", "<tr> <td> Delete timer </td> <td>"+ timezone +"</td> <td>" + action + "</td> <td>" + "RESET" + "<tr> <td>DATETIME</td> <td>TIMEZONE</td> <td>ACTION</td> <td>SET?</td> </tr> ");
   server.send(200, "text/html", HTML);
 
   TimerSet = false;
 }
 
+// Setup
 void setup()
 {
+  // Initialize serial port (USBCDC with baudrate 115200)
   Serial.begin(115200);
   Serial.println("Try Connecting to ");
   Serial.println(ssid);
 
+  // Initialize relay pin
   pinMode(controlPin, OUTPUT);
 
+  // Configures static IP address
+  if (!WiFi.config(local_IP, gateway, subnet, primaryDNS, secondaryDNS)) {
+    Serial.println("STA Failed to configure");
+  }
+
+  // Initialize WiFi
   WiFi.begin(ssid, password);
   while (WiFi.status() != WL_CONNECTED)
   {
@@ -244,15 +280,16 @@ void setup()
   Serial.print("Got IP: ");
   Serial.println(WiFi.localIP());
 
+  // Initialize WebServer and all /handlers
   server.on("/", handle_root);
   server.on("/relayOn", relayOn);
   server.on("/relayOff", relayOff);
   server.on("/setDateTime", setDateTime);
   server.on("/cancelDateTime", cancelDateTime);
-
   server.begin();
   Serial.println("HTTP server started");
 
+  // Initialize NTPClient
   timeClient.begin();
   delay(100);
 }

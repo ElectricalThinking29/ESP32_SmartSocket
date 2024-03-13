@@ -5,8 +5,8 @@
 #include <NTPClient.h>
 
 // SSID & Password
-const char *ssid = "****";
-const char *password = "++++";
+const char *ssid = "YOUR_SSID";
+const char *password = "YOUR_PASSWORD";
 
 // Set your Static IP address
 IPAddress local_IP(192, 168, 1, 184);
@@ -44,10 +44,11 @@ String HTML = R"rawliteral(
 <p> Relay State: %PINSTATE% </p>
 <button onclick="window.location.href='/relayOn'"> Turn On Socket </button>
 <button onclick="window.location.href='/relayOff'"> Turn Off Socket </button>
+<button onclick="window.location.href='/'"> Reload </button>
 
 <h2>Set Relay On/Off Time</h2>
 
-<p> Scheduled Time: SCHEDULED </p>
+<p> Scheduled Time: NOT SCHEDULED </p>
 
 <form action="/setDateTime" method="get">
 
@@ -105,7 +106,7 @@ void handle_root()
 // Turn relay on
 void relayOn()
 {
-  digitalWrite(controlPin, HIGH);
+  digitalWrite(controlPin, LOW);
   HTML.replace("%PINSTATE%", "ON");
   HTML.replace("OFF", "ON");
   server.send(200, "text/html", HTML);
@@ -115,7 +116,7 @@ void relayOn()
 // Turn relay off
 void relayOff()
 {
-  digitalWrite(controlPin, LOW);
+  digitalWrite(controlPin, HIGH);
   HTML.replace("%PINSTATE%", "OFF");
   HTML.replace("ON", "OFF");
   server.send(200, "text/html", HTML);
@@ -261,6 +262,7 @@ void setup()
 
   // Initialize relay pin
   pinMode(controlPin, OUTPUT);
+  digitalWrite(controlPin, HIGH); // Default state is OFF
 
   // Configures static IP address
   if (!WiFi.config(local_IP, gateway, subnet, primaryDNS, secondaryDNS)) {
